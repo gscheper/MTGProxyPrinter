@@ -1,30 +1,64 @@
 import requests
 import re
 import sys
-import json
+import time
+import argparse
 
+def make_scryfall_request(card_name="Demonic Tutor", set="STA", id="90"):
+    # Make request
+    response = requests.get("https://api.scryfall.com/cards/" + set + "/" + id + "", 
+                headers={"User-Agent":"MTGProxyPrinter","Accept":"*/*"})
+    
+    # Space out requests
+    time.sleep(0.05)
+    
+    return response.json()
 
 def main():
-    readfrom = sys.argv[1]
-    readto = sys.argv[2]
-    iterations = int(sys.argv[3])
+    '''
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-o", "--opp", default="list")
+    args = parser.parse_args()
+    #print(args.operation)
+    '''
+
+    mode = 'csv'
+    readfrom = 'input.txt'
+    readto = 'output.csv'
+    iterations = 10
+    sets = ["mic", "inr", "mid", "vow", "soi", "emn", "isd", "dka", "avr", "voc"]
 
     with open(readfrom, "r") as f1:
         with open(readto, "w") as f2:
-            f2.write("<!DOCTYPE html>\n\t<html>\n\t<body>\n")
+            if mode == 'csv':
+                f2.write('name,set,id,cost\n')
             for i in range (iterations):
+                # Parse card
                 curr_card = next(f1)
-                searchfor = " ".join(re.split(" ", curr_card)[1:-2])
-                if (curr_card[-3] == 'F'): searchfor = " ".join(re.split(" ", curr_card)[1:-3])
-                print(searchfor)
-                response = requests.get("https://api.scryfall.com/cards/named?fuzzy="+searchfor, 
-                                headers={"User-Agent":"MTGProxyPrinter","Accept":"*/*"})
-                f2.write("\t\t<img src=" + str(response.json()["image_uris"]["normal"]) + " width=\"240\" height=\"336\">\n")
-                
-                with open( "datafile.json" , "w" ) as write:
-                    json.dump( response.json() , write )
-            f2.write("\t</html>")
-
+                edhrec = re.match(r"(^[1-9]+) (([A-Z]|[a-z]| |/|,|-|')+)\n", curr_card + "\n")
+                mox = re.match(r"(^[1-9]+) (([A-Z]|[a-z]| |/|,|-|')+) \((.+)\) (([0-9]|-|[A-Z])*.?)( \*[A-Z]+\*)*( #[A-z]*)*\n", curr_card + "\n")
+                mox_foils = re.findall(r"\*([A-Z]+)\**", curr_card + "\n")
+                mox_tags = re.findall(r"#([A-z]+)*", curr_card + "\n")
+                if (mox != None):
+                    card = {
+                        "quantity": int(mox.group(1)),
+                        "name": mox.group(2),
+                        "set": mox.group(4),
+                        "card-number": mox.group(5),
+                        "tags": mox_tags,
+                        "foils": mox_foils
+                    }
+                    
+                    if (mode=='csv'):
+                        req = make_scryfall_request(set=card['set'], id=card['card-number'])
+                        f2.write(card['name'] + ',' + card['set'] + ',' + card['card-number'] + ',')
+                        if ('E' in card['foils']):
+                            f2.write(req['prices']['usd_etched'])
+                        elif ('F' in card['foils']):
+                            f2.write(req['prices']['usd_foil'])
+                        else:
+                            f2.write(req['prices']['usd'])
+                        f2.write('\n')
 
 if __name__=="__main__":
     main()
